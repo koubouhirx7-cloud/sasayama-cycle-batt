@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>丹波篠山サイクル 遠隔監視・メンテナンス管理システム (里山ナチュラル)</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Maplibre GL JS CSS & JS -->
+  <link href="https://unpkg.com/maplibre-gl@4.1.3/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@4.1.3/dist/maplibre-gl.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            satoyama: {
+              50: '#F4F7F4',   /* 優しい薄緑の背景色 */
+              100: '#E8EFE8',  /* 少し濃い薄緑 */
+              200: '#D1E0D1',
+              600: '#4B7F52',  /* 里山グリーン */
+              700: '#3A6340',  /* 深いグリーン */
+              800: '#2A472E',
+              900: '#152E18',  /* ほぼ黒に近いダークオリーブ */
+            },
+            brand: {
+              green: '#059669',  /* 鮮やかなエメラルド */
+              yellow: '#D97706', /* 落ち着いたゴールド */
+              red: '#DC2626',    /* 警告の赤 */
+              blue: '#2563EB',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', 'Noto Sans JP', sans-serif;
+      background-color: #F4F7F4;
+      color: #152E18;
+      overflow: hidden;
+    }
+    
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.02);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(75, 127, 82, 0.15);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(75, 127, 82, 0.3);
+    }
+
+    .custom-marker {
+      cursor: pointer;
+      filter: drop-shadow(0 4px 8px rgba(21, 46, 24, 0.25));
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .custom-marker:hover {
+      transform: scale(1.25) translateY(-3px);
+      filter: drop-shadow(0 8px 16px rgba(21, 46, 24, 0.4));
+    }
+    .custom-marker.active-marker {
+      transform: scale(1.3) translateY(-4px);
+      filter: drop-shadow(0 8px 20px rgba(5, 150, 105, 0.4));
+      border-color: #059669 !important;
+      z-index: 999;
+    }
+
+    @keyframes multi-ring-pulse {
+      0% {
+        transform: scale(0.9);
+        opacity: 0.9;
+      }
+      50% {
+        opacity: 0.4;
+      }
+      100% {
+        transform: scale(2.2);
+        opacity: 0;
+      }
+    }
+    .animate-pulse-ring {
+      animation: multi-ring-pulse 2.2s cubic-bezier(0.25, 0, 0, 1) infinite;
+    }
+
+    @keyframes alert-breath {
+      0%, 100% {
+        background-color: rgba(220, 38, 38, 0.03);
+        border-color: rgba(220, 38, 38, 0.12);
+      }
+      50% {
+        background-color: rgba(220, 38, 38, 0.08);
+        border-color: rgba(220, 38, 38, 0.28);
+        box-shadow: 0 0 12px rgba(220, 38, 38, 0.1);
+      }
+    }
+    .animate-alert-breath {
+      animation: alert-breath 3s ease-in-out infinite;
+    }
+
+    @keyframes text-breath {
+      0%, 100% { opacity: 0.85; }
+      50% {
+        opacity: 1;
+        text-shadow: 0 0 6px rgba(220, 38, 38, 0.3);
+      }
+    }
+    .animate-text-breath {
+      animation: text-breath 1.5s ease-in-out infinite;
+    }
+
+    /* ライトモード用の半透明白ガラスポップアップ */
+    .maplibregl-popup-content {
+      background: rgba(255, 255, 255, 0.9) !important;
+      backdrop-filter: blur(16px) saturate(180%) !important;
+      border: 1px solid rgba(75, 127, 82, 0.15) !important;
+      border-radius: 16px !important;
+      box-shadow: 0 15px 30px -10px rgba(21, 46, 24, 0.15) !important;
+      color: #152E18 !important;
+      padding: 16px !important;
+      min-width: 210px;
+    }
+    .maplibregl-popup-anchor-top .maplibregl-popup-tip { border-bottom-color: rgba(255, 255, 255, 0.9) !important; }
+    .maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: rgba(255, 255, 255, 0.9) !important; }
+    .maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: rgba(255, 255, 255, 0.9) !important; }
+    .maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: rgba(255, 255, 255, 0.9) !important; }
+    
+    .maplibregl-popup-close-button {
+      color: rgba(21, 46, 24, 0.5) !important;
+      padding: 6px 10px !important;
+      border-radius: 0 12px 0 0 !important;
+      transition: all 0.2s;
+    }
+    .maplibregl-popup-close-button:hover {
+      background-color: rgba(21, 46, 24, 0.05) !important;
+      color: #152E18 !important;
+    }
+  </style>
+</head>
+<body class="flex h-screen w-screen overflow-hidden text-satoyama-900 relative">
+
+  <!-- モバイル用サイドバー背景オーバーレイ -->
+  <div id="sidebar-overlay" class="hidden fixed inset-0 bg-satoyama-900/40 backdrop-blur-sm z-30 transition-all duration-300"></div>
+
+  <!-- 1. 左側サイドバー (里山グリーン＆ソフトグラス) -->
+  <aside id="sidebar" class="fixed md:relative top-0 left-0 w-80 h-full bg-white/90 md:bg-white/60 backdrop-blur-2xl md:backdrop-blur-xl border-r border-satoyama-600/10 flex flex-col z-40 md:z-20 transition-transform duration-300 ease-out -translate-x-full md:translate-x-0">
+    
+    <!-- ロゴヘッダー -->
+    <div class="p-6 border-b border-satoyama-600/10 flex justify-between items-center">
+      <div class="flex items-center gap-3">
+        <div class="bg-gradient-to-tr from-satoyama-600 to-emerald-500 p-2.5 rounded-xl shadow-md">
+          <i data-lucide="navigation" class="w-5 h-5 text-white"></i>
+        </div>
+        <div>
+          <span class="text-base font-bold bg-gradient-to-r from-satoyama-900 to-satoyama-700 bg-clip-text text-transparent">丹波篠山サイクル</span>
+          <div class="text-[9px] text-satoyama-600 tracking-wider mt-0.5 uppercase font-semibold">篠山城下町エリア</div>
+        </div>
+      </div>
+      <!-- モバイル用閉じるボタン -->
+      <button onclick="toggleMobileSidebar(false)" class="md:hidden p-1.5 rounded-lg bg-satoyama-100 border border-satoyama-200 text-satoyama-600 hover:text-satoyama-900">
+        <i data-lucide="x" class="w-4.5 h-4.5"></i>
+      </button>
+    </div>
+
+    <!-- カウントサマリー -->
+    <div class="grid grid-cols-2 gap-2.5 p-4 border-b border-satoyama-600/10">
+      <div class="bg-satoyama-100/50 border border-satoyama-600/5 rounded-xl p-3">
+        <div class="text-[10px] text-satoyama-700 font-medium">全車両</div>
+        <div class="text-xl font-extrabold text-satoyama-900 mt-1"><span id="summary-total">10</span> <span class="text-xs font-normal text-satoyama-600">台</span></div>
+      </div>
+      <div id="summary-alert-box" class="border rounded-xl p-3 transition-all duration-300 border-satoyama-600/5 bg-satoyama-100/50">
+        <div id="summary-alert-label" class="text-[10px] text-satoyama-700 font-medium">要バッテリー交換</div>
+        <div id="summary-alert-count" class="text-xl font-extrabold text-satoyama-900 mt-1">3 <span class="text-xs font-normal text-satoyama-600">台</span></div>
+      </div>
+    </div>
+
+    <!-- 検索と絞り込みスイッチ -->
+    <div class="p-4 space-y-4 border-b border-satoyama-600/10">
+      <div class="relative">
+        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-3.5 text-satoyama-600"></i>
+        <input 
+          id="vehicle-search"
+          type="text" 
+          placeholder="自転車ID・場所で検索..."
+          oninput="renderVehicleList()"
+          class="w-full bg-white/80 border border-satoyama-600/15 rounded-xl py-2.5 pl-10 pr-4 text-sm text-satoyama-900 placeholder-satoyama-600/50 focus:outline-none focus:border-satoyama-600 focus:ring-1 focus:ring-satoyama-600/30 shadow-sm transition-all"
+        />
+      </div>
+
+      <div class="flex items-center justify-between bg-satoyama-50/60 border border-satoyama-600/5 rounded-xl p-3">
+        <div class="flex items-center gap-2.5">
+          <i id="filter-icon" data-lucide="filter" class="w-4 h-4 text-satoyama-600"></i>
+          <div class="text-xs font-semibold text-satoyama-800">バッテリー30%以下</div>
+        </div>
+        <button 
+          id="toggle-filter"
+          onclick="toggleBatteryFilter()"
+          class="w-10 h-5.5 rounded-full p-0.5 bg-satoyama-200 transition-all duration-300 relative"
+        >
+          <div id="toggle-knob" class="w-4.5 h-4.5 rounded-full bg-white transition-all duration-300 transform translate-x-0 shadow-sm"></div>
+        </button>
+      </div>
+    </div>
+
+    <!-- 車両リスト -->
+    <div id="vehicle-list" class="flex-1 overflow-y-auto p-4 space-y-2">
+      <!-- JavaScriptで動的に描画されます -->
+    </div>
+  </aside>
+
+  <!-- 2. メイン地図領域 -->
+  <main class="flex-1 relative h-full">
+    <!-- 地図コンテナ -->
+    <div id="map" class="w-full h-full"></div>
+
+    <!-- フローティングヘッダー -->
+    <div class="absolute top-6 left-6 right-6 md:right-auto z-10 bg-white/90 backdrop-blur-md border border-satoyama-600/10 px-4 py-3 md:px-5 md:py-3.5 rounded-2xl shadow-md flex items-center justify-between md:justify-start gap-4">
+      <div class="flex items-center gap-3">
+        <button onclick="toggleMobileSidebar(true)" class="md:hidden p-2 rounded-xl bg-satoyama-100 border border-satoyama-200 text-satoyama-600 hover:text-satoyama-900">
+          <i data-lucide="menu" class="w-5 h-5"></i>
+        </button>
+        <div class="flex items-center gap-3">
+          <div class="w-3.5 h-3.5 rounded-full bg-emerald-500 animate-pulse"></div>
+          <div>
+            <h1 class="text-sm md:text-base font-bold text-satoyama-900 tracking-wide">丹波篠山サイクル管理画面</h1>
+            <p class="text-[10px] md:text-xs text-satoyama-600 mt-0.5">
+              城下町観光用電動アシスト自転車 🟢 遠隔監視中
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 3. 右側詳細 ＆ メンテナンス日誌ドロワー -->
+  <div id="detail-panel" class="hidden fixed md:absolute right-0 bottom-0 z-30 flex flex-col bg-white/95 md:bg-white/80 backdrop-blur-2xl border-t md:border-t-0 md:border-l border-satoyama-600/10 shadow-glass transition-all duration-300 w-full h-[85vh] md:w-96 md:h-full rounded-t-3xl md:rounded-t-none">
+    
+    <!-- ドラッグハンドルバー (モバイルのみ) -->
+    <div class="md:hidden flex justify-center py-2.5">
+      <div class="w-12 h-1 bg-satoyama-200 rounded-full"></div>
+    </div>
+
+    <!-- ヘッダー -->
+    <div class="p-5 md:p-6 border-b border-satoyama-600/10 flex items-center justify-between">
+      <div>
+        <h2 id="detail-device-id" class="text-lg font-bold text-satoyama-900 tracking-wide">篠山-001 詳細</h2>
+        <p id="detail-location-name" class="text-xs text-satoyama-600 mt-0.5">篠山城跡 三の丸広場</p>
+      </div>
+      <button onclick="closeDetailPanel()" class="p-1.5 rounded-lg bg-satoyama-100 border border-satoyama-200 text-satoyama-600 hover:text-satoyama-900 active:scale-95">
+        <i data-lucide="x" class="w-4.5 h-4.5"></i>
+      </button>
+    </div>
+
+    <!-- コンテンツスクロール領域 -->
+    <div class="flex-1 overflow-y-auto p-5 md:p-6 space-y-6">
+      
+      <!-- ローバッテリー警告バナー (ライト警告) -->
+      <div id="low-battery-banner" class="hidden bg-rose-50 border border-rose-200 rounded-2xl p-4 animate-alert-breath space-y-2">
+        <div class="flex items-center gap-2">
+          <i data-lucide="alert-triangle" class="w-4 h-4 text-brand-red animate-bounce"></i>
+          <span id="banner-alert-text" class="text-xs font-bold text-brand-red animate-text-breath">警告: バッテリー低下 (8%)</span>
+        </div>
+        <p class="text-[11px] text-rose-950 leading-relaxed">
+          バッテリー残量が少なくなっています。巡回スタッフは現場へ向かい、予備バッテリーとの交換日誌を登録してください。
+        </p>
+        <button
+          onclick="applyBatteryReplacementDraft()"
+          class="w-full bg-rose-100 hover:bg-rose-200 text-brand-red border border-rose-300 text-[11px] font-bold py-1.5 px-3 rounded-lg transition-all active:scale-[0.98]"
+        >
+          🔋 バッテリー交換日誌を自動下書きする
+        </button>
+      </div>
+
+      <!-- 車両ステータスカード -->
+      <div class="bg-satoyama-50 border border-satoyama-600/5 rounded-2xl p-5 space-y-4 shadow-sm">
+        <div class="flex justify-between items-center">
+          <span class="text-xs text-satoyama-600 font-semibold">バッテリー残量</span>
+          <div class="flex items-center gap-2">
+            <i id="detail-battery-icon" data-lucide="battery" class="w-4 h-4 text-brand-green"></i>
+            <span id="detail-battery-soc" class="text-base font-extrabold text-satoyama-900">85%</span>
+          </div>
+        </div>
+        
+        <!-- 残量バー -->
+        <div class="w-full bg-satoyama-200 rounded-full h-2">
+          <div id="detail-battery-bar" class="h-2 rounded-full bg-brand-green" style="width: 85%;"></div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 pt-2 border-t border-satoyama-600/10 text-xs text-satoyama-700">
+          <div>
+            <div>バッテリー電圧</div>
+            <div id="detail-voltage" class="font-semibold text-satoyama-900 mt-1">39.5 V</div>
+          </div>
+          <div>
+            <div>運行ステータス</div>
+            <div id="detail-status" class="font-semibold text-satoyama-900 mt-1">利用可能</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- メンテナンス日誌登録フォーム -->
+      <div id="maintenance-form-section" class="bg-satoyama-50/40 border border-satoyama-600/5 rounded-2xl p-5 space-y-4">
+        <h3 class="text-sm font-bold text-satoyama-900 flex items-center gap-2">
+          <i data-lucide="pen-tool" class="w-4 h-4 text-satoyama-600"></i>
+          <span>新しいメンテナンス日誌をつける</span>
+        </h3>
+
+        <form onsubmit="submitMaintenance(event)" class="space-y-4">
+          <div>
+            <label class="block text-[10px] text-satoyama-700 uppercase font-bold tracking-wider mb-1.5">出来事の種類</label>
+            <select 
+              id="maint-type"
+              class="w-full bg-white border border-satoyama-600/15 rounded-xl py-2.5 px-3.5 text-xs text-satoyama-900 focus:outline-none focus:border-satoyama-600 cursor-pointer shadow-sm"
+            >
+              <option value="puncture_repair">🔧 パンク修理</option>
+              <option value="tire_replacement">🚲 タイヤ交換</option>
+              <option value="battery_replacement">🔋 バッテリー交換</option>
+              <option value="brake_adjustment">🔩 ブレーキ調整</option>
+              <option value="regular_inspection">✅ 定期点検</option>
+              <option value="other">📝 その他</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-[10px] text-satoyama-700 uppercase font-bold tracking-wider mb-1.5">詳しい内容（メモ）</label>
+            <textarea 
+              id="maint-desc"
+              rows="3"
+              placeholder="作業内容、空気圧チェック、調整箇所のメモ..."
+              class="w-full bg-white border border-satoyama-600/15 rounded-xl p-3 text-xs text-satoyama-900 placeholder-satoyama-600/40 focus:outline-none focus:border-satoyama-600 resize-none transition-all shadow-sm"
+            ></textarea>
+          </div>
+
+          <button 
+            type="submit"
+            class="w-full bg-gradient-to-r from-satoyama-600 to-emerald-600 hover:from-satoyama-700 hover:to-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs transition-all shadow-md active:scale-[0.98]"
+          >
+            日誌を登録する
+          </button>
+        </form>
+      </div>
+
+      <!-- 過去のメンテナンス記録 -->
+      <div class="space-y-4">
+        <div class="flex flex-col gap-2 border-b border-satoyama-600/10 pb-3">
+          <h3 class="text-sm font-bold text-satoyama-900 flex items-center gap-2">
+            <i data-lucide="history" class="w-4 h-4 text-satoyama-600" style="color: #4B7F52;"></i>
+            <span>過去のメンテナンス記録 (<span id="timeline-count">0</span>)</span>
+          </h3>
+          
+          <!-- タイムライン内 検索＆フィルタ -->
+          <div class="space-y-2 mt-1">
+            <div class="relative">
+              <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-2.5 text-satoyama-600"></i>
+              <input 
+                id="timeline-search"
+                type="text"
+                placeholder="記録内を検索..."
+                oninput="renderTimeline()"
+                class="w-full bg-white border border-satoyama-600/10 rounded-lg py-1.5 pl-9 pr-3 text-[11px] text-satoyama-900 placeholder-satoyama-600/40 focus:outline-none focus:border-satoyama-600/50 shadow-sm"
+              />
+            </div>
+            
+            <div class="flex flex-wrap gap-1">
+              <button onclick="setTimelineFilter('all')" id="filter-btn-all" class="text-[9px] font-bold px-2 py-1 rounded-md border bg-satoyama-600/10 text-satoyama-700 border-satoyama-600/20">すべて</button>
+              <button onclick="setTimelineFilter('repair')" id="filter-btn-repair" class="text-[9px] font-bold px-2 py-1 rounded-md border bg-white text-satoyama-600 border-satoyama-600/10 hover:bg-satoyama-50">修理</button>
+              <button onclick="setTimelineFilter('replacement')" id="filter-btn-replacement" class="text-[9px] font-bold px-2 py-1 rounded-md border bg-white text-satoyama-600 border-satoyama-600/10 hover:bg-satoyama-50">交換</button>
+              <button onclick="setTimelineFilter('inspection')" id="filter-btn-inspection" class="text-[9px] font-bold px-2 py-1 rounded-md border bg-white text-satoyama-600 border-satoyama-600/10 hover:bg-satoyama-50">点検</button>
+              <button onclick="setTimelineFilter('other')" id="filter-btn-other" class="text-[9px] font-bold px-2 py-1 rounded-md border bg-white text-satoyama-600 border-satoyama-600/10 hover:bg-satoyama-50">その他</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- タイムラインリスト -->
+        <div id="timeline-list" class="relative pl-4 border-l border-satoyama-600/20 space-y-5 mt-4">
+          <!-- JavaScriptで動的に描画されます -->
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const vehicles = [
+      { device_id: '篠山-001', battery_soc: 85, battery_voltage: 39500, current_lat: 35.0725, current_lng: 135.2185, status: 'available', location_name: '篠山城跡 三の丸広場', timestamp: new Date(Date.now() - 5 * 60000).toISOString() },
+      { device_id: '篠山-002', battery_soc: 8, battery_voltage: 32000, current_lat: 35.0755, current_lng: 135.2195, status: 'available', location_name: '丹波篠山市役所前', timestamp: new Date(Date.now() - 2 * 60000).toISOString() },
+      { device_id: '篠山-003', battery_soc: 45, battery_voltage: 36200, current_lat: 35.0805, current_lng: 135.2150, status: 'in_use', location_name: '篠山鳳鳴高校周辺', timestamp: new Date(Date.now() - 10 * 60000).toISOString() },
+      { device_id: '篠山-004', battery_soc: 28, battery_voltage: 34100, current_lat: 35.0728, current_lng: 135.2285, status: 'available', location_name: '河原町妻入商家群', timestamp: new Date(Date.now() - 1 * 60000).toISOString() },
+      { device_id: '篠山-005', battery_soc: 95, battery_voltage: 41200, current_lat: 35.0742, current_lng: 135.2165, status: 'charging', location_name: '篠山城下町歴史美術館', timestamp: new Date(Date.now() - 30 * 60000).toISOString() },
+      { device_id: '篠山-006', battery_soc: 50, battery_voltage: 36800, current_lat: 35.0780, current_lng: 135.2220, status: 'in_use', location_name: 'デカンショ街道沿い', timestamp: new Date(Date.now() - 8 * 60000).toISOString() },
+      { device_id: '篠山-007', battery_soc: 72, battery_voltage: 38800, current_lat: 35.0775, current_lng: 135.2315, status: 'available', location_name: '王地山公園 駐車場', timestamp: new Date(Date.now() - 12 * 60000).toISOString() },
+      { device_id: '篠山-008', battery_soc: 15, battery_voltage: 32800, current_lat: 35.0735, current_lng: 135.2140, status: 'error', location_name: '篠山小学校前', timestamp: new Date(Date.now() - 15 * 60000).toISOString() },
+      { device_id: '篠山-009', battery_soc: 4, battery_voltage: 31000, current_lat: 35.0750, current_lng: 135.2225, status: 'available', location_name: '二階町バス停付近', timestamp: new Date(Date.now() - 3 * 60000).toISOString() },
+      { device_id: '篠山-010', battery_soc: 60, battery_voltage: 37500, current_lat: 35.0600, current_lng: 135.2400, status: 'available', location_name: '八上城跡登り口', timestamp: new Date(Date.now() - 6 * 60000).toISOString() }
+    ];
+
+    const maintenanceLogs = {
+      '篠山-002': [
+        { id: 'm-1', type: 'puncture_repair', description: 'デカンショ街道沿いにて前輪のパンク修理。ゴムチューブを補修パッチ処理しました。', performed_at: new Date(Date.now() - 7 * 86400000).toISOString() },
+        { id: 'm-2', type: 'tire_replacement', description: '後輪タイヤの摩耗限界のため、タイヤゴム本体およびインナーチューブを新品に全交換。', performed_at: new Date(Date.now() - 30 * 86400000).toISOString() }
+      ],
+      '篠山-008': [
+        { id: 'm-3', type: 'brake_adjustment', description: '左手リアブレーキの効きが甘いため、ワイヤー調整ネジ締め直し。シューは残量あり。', performed_at: new Date(Date.now() - 2 * 86400000).toISOString() },
+        { id: 'm-4', type: 'regular_inspection', description: '春季の定期点検実施。チェーンの油注し、各部ネジのトルク確認、ライト点灯良好。', performed_at: new Date(Date.now() - 60 * 86400000).toISOString() }
+      ]
+    };
+
+    let map = null;
+    let markers = {};
+    let selectedVehicleId = null;
+    let filterBatteryLow = false;
+    let currentTimelineFilter = 'all';
+
+    function initMap() {
+      // CartoDB Voyagerの「ライト・ナチュラル」無料タイルを使用し、里山の緑や道路が明るく映えるようにマウント
+      map = new maplibregl.Map({
+        container: 'map',
+        style: {
+          version: 8,
+          sources: {
+            'cartodb-voyager': {
+              type: 'raster',
+              tiles: [
+                'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'
+              ],
+              tileSize: 256,
+              attribution: '© OpenStreetMap contributors, © CARTO'
+            }
+          },
+          layers: [
+            {
+              id: 'cartodb-voyager-layer',
+              type: 'raster',
+              source: 'cartodb-voyager',
+              minzoom: 0,
+              maxzoom: 20
+            }
+          ]
+        },
+        center: [135.2195, 35.0740], // 丹波篠山市・篠山城跡の中心点
+        zoom: 14.2,
+        pitch: 35,
+        bearing: -10
+      });
+
+      map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'bottom-right');
+
+      map.on('load', () => {
+        renderMarkers();
+      });
+    }
+
+    function renderMarkers() {
+      if (!map) return;
+
+      Object.keys(markers).forEach(id => markers[id].remove());
+      markers = {};
+
+      vehicles.forEach(vehicle => {
+        if (filterBatteryLow && vehicle.battery_soc > 30) return;
+
+        const searchVal = document.getElementById('vehicle-search').value.toLowerCase();
+        if (searchVal && !vehicle.device_id.toLowerCase().includes(searchVal) && !vehicle.location_name.toLowerCase().includes(searchVal)) {
+          return;
+        }
+
+        let color = '#10B981'; // 緑
+        if (vehicle.status === 'error') color = '#374151'; // ダークチャコール (要整備)
+        else if (vehicle.battery_soc <= 30) color = '#EF4444'; // 赤
+        else if (vehicle.battery_soc <= 69) color = '#F59E0B'; // 黄
+
+        const el = document.createElement('div');
+        el.id = `marker-${vehicle.device_id}`;
+        el.className = `custom-marker relative flex items-center justify-center ${selectedVehicleId === vehicle.device_id ? 'active-marker' : ''}`;
+        el.style.width = '26px';
+        el.style.height = '26px';
+        el.style.borderRadius = '50%';
+        el.style.backgroundColor = color;
+        el.style.border = '2.5px solid rgba(255, 255, 255, 0.95)';
+        el.style.boxShadow = '0 4px 12px rgba(21,46,24,0.18)';
+
+        const dot = document.createElement('div');
+        dot.style.width = '6px';
+        dot.style.height = '6px';
+        dot.style.borderRadius = '50%';
+        dot.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+        el.appendChild(dot);
+
+        if (vehicle.battery_soc <= 30 || vehicle.status === 'error') {
+          const pulse = document.createElement('div');
+          pulse.className = 'pulse-ring absolute -inset-2 rounded-full animate-pulse-ring opacity-60 pointer-events-none';
+          pulse.style.border = `2px solid ${color}`;
+          el.appendChild(pulse);
+        }
+
+        const statusText = vehicle.status === 'error' ? '🔴 要整備' : vehicle.status === 'in_use' ? '🔵 使用中' : vehicle.status === 'charging' ? '🟡 充電中' : '🟢 利用可能';
+        const formattedTime = new Date(vehicle.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        
+        const popupHtml = `
+          <div style="font-family: 'Noto Sans JP', sans-serif; padding: 2px;">
+            <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #152E18;">ID: ${vehicle.device_id}</div>
+            <div style="font-size: 11px; color: #4B5563; margin-bottom: 6px; display: flex; justify-content: space-between;">
+              <span>状況:</span>
+              <span style="font-weight: 600; color: #152E18;">${statusText}</span>
+            </div>
+            <div style="font-size: 11px; color: #4B5563; margin-bottom: 6px; display: flex; justify-content: space-between;">
+              <span>バッテリー:</span>
+              <span style="font-weight: 700; color: ${color}">${vehicle.battery_soc}%</span>
+            </div>
+            <div style="font-size: 11px; color: #4B5563; margin-bottom: 6px; display: flex; justify-content: space-between; gap: 10px;">
+              <span>現在地:</span>
+              <span style="font-weight: 500; color: #152E18; text-align: right;">${vehicle.location_name}</span>
+            </div>
+            <div style="font-size: 10px; color: #9CA3AF; border-top: 1px solid rgba(0,0,0,0.06); margin-top: 8px; padding-top: 6px; text-align: right;">最終更新: ${formattedTime}</div>
+          </div>
+        `;
+
+        const popup = new maplibregl.Popup({ offset: 15, closeButton: true }).setHTML(popupHtml);
+
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat([vehicle.current_lng, vehicle.current_lat])
+          .setPopup(popup)
+          .addTo(map);
+
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          selectVehicle(vehicle.device_id);
+        });
+
+        markers[vehicle.device_id] = marker;
+      });
+    }
+
+    function selectVehicle(id) {
+      selectedVehicleId = id;
+      renderVehicleList();
+
+      Object.keys(markers).forEach(mId => {
+        const markerEl = markers[mId].getElement();
+        if (mId === id) {
+          markerEl.classList.add('active-marker');
+        } else {
+          markerEl.classList.remove('active-marker');
+        }
+      });
+
+      const vehicle = vehicles.find(v => v.device_id === id);
+      if (!vehicle) return;
+
+      map.flyTo({
+        center: [vehicle.current_lng, vehicle.current_lat],
+        zoom: 16.5,
+        speed: 1.1,
+        curve: 1.35,
+        essential: true
+      });
+
+      setTimeout(() => {
+        if (markers[id]) {
+          markers[id].togglePopup();
+        }
+      }, 350);
+
+      document.getElementById('detail-device-id').textContent = vehicle.device_id;
+      document.getElementById('detail-location-name').textContent = vehicle.location_name;
+      document.getElementById('detail-battery-soc').textContent = `${vehicle.battery_soc}%`;
+      
+      const bar = document.getElementById('detail-battery-bar');
+      bar.style.width = `${vehicle.battery_soc}%`;
+
+      let colorClass = 'text-brand-green';
+      let barClass = 'bg-brand-green';
+      if (vehicle.battery_soc <= 30) {
+        colorClass = 'text-brand-red';
+        barClass = 'bg-brand-red';
+      } else if (vehicle.battery_soc <= 69) {
+        colorClass = 'text-brand-yellow';
+        barClass = 'bg-brand-yellow';
+      }
+      
+      const icon = document.getElementById('detail-battery-icon');
+      icon.className = `w-4 h-4 ${colorClass}`;
+      bar.className = `h-2 rounded-full ${barClass}`;
+
+      document.getElementById('detail-voltage').textContent = `${(vehicle.battery_voltage / 1000).toFixed(1)} V`;
+      
+      let statusJa = '利用可能';
+      if (vehicle.status === 'in_use') statusJa = '使用中';
+      else if (vehicle.status === 'charging') statusJa = '充電中';
+      else if (vehicle.status === 'error') statusJa = '要整備 (故障)';
+      document.getElementById('detail-status').textContent = statusJa;
+
+      const banner = document.getElementById('low-battery-banner');
+      if (vehicle.battery_soc <= 30) {
+        document.getElementById('banner-alert-text').textContent = `警告: バッテリー残量低下 (${vehicle.battery_soc}%)`;
+        banner.classList.remove('hidden');
+      } else {
+        banner.classList.add('hidden');
+      }
+
+      currentTimelineFilter = 'all';
+      document.getElementById('timeline-search').value = '';
+      renderTimeline();
+
+      const panel = document.getElementById('detail-panel');
+      panel.classList.remove('hidden');
+      panel.classList.add('animate-in', 'slide-in-from-bottom', 'md:slide-in-from-right');
+    }
+
+    function closeDetailPanel() {
+      selectedVehicleId = null;
+      renderVehicleList();
+      
+      Object.keys(markers).forEach(mId => {
+        markers[mId].getElement().classList.remove('active-marker');
+      });
+
+      const panel = document.getElementById('detail-panel');
+      panel.classList.add('hidden');
+    }
+
+    function renderVehicleList() {
+      const container = document.getElementById('vehicle-list');
+      container.innerHTML = '';
+
+      const searchVal = document.getElementById('vehicle-search').value.toLowerCase();
+      
+      const list = vehicles
+        .filter(v => !filterBatteryLow || v.battery_soc <= 30)
+        .filter(v => v.device_id.toLowerCase().includes(searchVal) || v.location_name.toLowerCase().includes(searchVal));
+
+      document.getElementById('summary-total').textContent = vehicles.length;
+      const alertCount = vehicles.filter(v => v.battery_soc <= 30).length;
+      document.getElementById('summary-alert-count').textContent = `${alertCount} 台`;
+      
+      const alertBox = document.getElementById('summary-alert-box');
+      const alertLabel = document.getElementById('summary-alert-label');
+      if (alertCount > 0) {
+        alertBox.className = 'border border-rose-200 bg-rose-50 rounded-xl p-3 animate-alert-breath';
+        alertLabel.className = 'text-[10px] text-brand-red font-bold animate-text-breath';
+        document.getElementById('summary-alert-count').className = 'text-xl font-extrabold text-brand-red mt-1';
+      } else {
+        alertBox.className = 'border border-satoyama-600/5 bg-satoyama-100/50 rounded-xl p-3';
+        alertLabel.className = 'text-[10px] text-satoyama-700 font-medium';
+        document.getElementById('summary-alert-count').className = 'text-xl font-extrabold text-satoyama-900 mt-1';
+      }
+
+      list.forEach(v => {
+        const isSelected = v.device_id === selectedVehicleId;
+        const isLow = v.battery_soc <= 30;
+
+        let batteryColor = 'text-brand-green';
+        if (v.battery_soc <= 30) batteryColor = 'text-brand-red';
+        else if (v.battery_soc <= 69) batteryColor = 'text-brand-yellow';
+
+        let badgeHtml = '';
+        if (v.status === 'available') badgeHtml = '<span class="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-2 py-0.5 rounded-full text-[10px] font-medium tracking-wide">利用可能</span>';
+        else if (v.status === 'in_use') badgeHtml = '<span class="bg-brand-blue/10 text-brand-blue border border-brand-blue/20 px-2 py-0.5 rounded-full text-[10px] font-medium tracking-wide">使用中</span>';
+        else if (v.status === 'charging') badgeHtml = '<span class="bg-amber-500/10 text-amber-600 border border-amber-500/20 px-2 py-0.5 rounded-full text-[10px] font-medium tracking-wide">充電中</span>';
+        else if (v.status === 'error') badgeHtml = '<span class="bg-rose-500/10 text-rose-500 border border-rose-500/20 px-2 py-0.5 rounded-full text-[10px] font-medium tracking-wide animate-pulse">要整備</span>';
+
+        const item = document.createElement('div');
+        item.className = `relative p-3.5 rounded-xl border transition-all duration-300 cursor-pointer flex flex-col gap-2.5 active:scale-[0.98] ${
+          isSelected 
+            ? 'bg-satoyama-100 border-satoyama-600/40 shadow-md translate-x-1' 
+            : isLow
+              ? 'bg-rose-500/[0.01] border-rose-500/15 hover:bg-rose-500/[0.03] hover:border-rose-500/30'
+              : 'bg-white/80 border-satoyama-600/10 hover:bg-satoyama-100 hover:border-satoyama-600/30 hover:translate-x-1'
+        }`;
+
+        item.innerHTML = `
+          <div class="absolute left-0 top-3.5 bottom-3.5 w-1 rounded-r-full transition-all duration-300 ${isSelected ? 'bg-satoyama-600 scale-y-100' : 'bg-transparent scale-y-0'}"></div>
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-bold text-satoyama-900 tracking-wide">${v.device_id}</span>
+            ${badgeHtml}
+          </div>
+          <div class="flex items-center justify-between text-xs text-satoyama-700">
+            <div class="flex items-center gap-1.5">
+              <i data-lucide="battery" class="w-4 h-4 ${batteryColor} ${isLow ? 'animate-pulse' : ''}"></i>
+              <span class="font-bold text-satoyama-800">${v.battery_soc}%</span>
+            </div>
+            <span class="text-[10px] text-satoyama-500 font-medium">${v.location_name}</span>
+          </div>
+        `;
+
+        item.addEventListener('click', () => {
+          selectVehicle(v.device_id);
+          toggleMobileSidebar(false);
+        });
+
+        container.appendChild(item);
+      });
+
+      if (list.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-10">
+            <i data-lucide="shield-alert" class="w-8 h-8 text-satoyama-600 mx-auto mb-2"></i>
+            <p class="text-xs text-satoyama-600">該当する車両が見つかりません</p>
+          </div>
+        `;
+      }
+      lucide.createIcons();
+    }
+
+    function toggleBatteryFilter() {
+      filterBatteryLow = !filterBatteryLow;
+      
+      const knob = document.getElementById('toggle-knob');
+      const btn = document.getElementById('toggle-filter');
+      const icon = document.getElementById('filter-icon');
+
+      if (filterBatteryLow) {
+        knob.className = 'w-4.5 h-4.5 rounded-full bg-white transition-all duration-300 transform translate-x-4.5 shadow-sm';
+        btn.className = 'w-10 h-5.5 rounded-full p-0.5 bg-brand-red transition-all duration-300 relative';
+        icon.className = 'w-4 h-4 text-brand-red animate-pulse';
+      } else {
+        knob.className = 'w-4.5 h-4.5 rounded-full bg-white transition-all duration-300 transform translate-x-0 shadow-sm';
+        btn.className = 'w-10 h-5.5 rounded-full p-0.5 bg-satoyama-200 transition-all duration-300 relative';
+        icon.className = 'w-4 h-4 text-satoyama-600';
+      }
+
+      renderVehicleList();
+      renderMarkers();
+    }
+
+    function renderTimeline() {
+      const container = document.getElementById('timeline-list');
+      container.innerHTML = '';
+
+      const logs = maintenanceLogs[selectedVehicleId] || [];
+      const searchVal = document.getElementById('timeline-search').value.toLowerCase();
+
+      const filtered = logs.filter(log => {
+        if (currentTimelineFilter !== 'all') {
+          const isRepair = log.type === 'puncture_repair' || log.type === 'brake_adjustment';
+          const isReplacement = log.type === 'tire_replacement' || log.type === 'battery_replacement';
+          const isInspection = log.type === 'regular_inspection';
+
+          if (currentTimelineFilter === 'repair' && !isRepair) return false;
+          if (currentTimelineFilter === 'replacement' && !isReplacement) return false;
+          if (currentTimelineFilter === 'inspection' && !isInspection) return false;
+          if (currentTimelineFilter === 'other' && (isRepair || isReplacement || isInspection)) return false;
+        }
+
+        if (searchVal) {
+          return log.description.toLowerCase().includes(searchVal);
+        }
+        return true;
+      });
+
+      document.getElementById('timeline-count').textContent = filtered.length;
+
+      filtered.forEach(log => {
+        let label = 'その他';
+        let color = 'bg-satoyama-100 text-satoyama-700 border-satoyama-200';
+        if (log.type === 'puncture_repair') { label = 'パンク修理'; color = 'bg-orange-50 text-orange-700 border-orange-200'; }
+        else if (log.type === 'tire_replacement') { label = 'タイヤ交換'; color = 'bg-indigo-50 text-indigo-700 border-indigo-200'; }
+        else if (log.type === 'battery_replacement') { label = 'バッテリー交換'; color = 'bg-emerald-50 text-emerald-750 border-emerald-200'; }
+        else if (log.type === 'brake_adjustment') { label = 'ブレーキ調整'; color = 'bg-cyan-50 text-cyan-700 border-cyan-200'; }
+        else if (log.type === 'regular_inspection') { label = '定期点検'; color = 'bg-teal-50 text-teal-700 border-teal-200'; }
+
+        const dateStr = new Date(log.performed_at).toLocaleDateString('ja-JP', {
+          year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
+        });
+
+        const item = document.createElement('div');
+        item.className = 'relative group timeline-item';
+        item.innerHTML = `
+          <div class="timeline-dot w-2.5 h-2.5 rounded-full bg-satoyama-600 absolute -left-[21.5px] top-1.5 border-2 border-white transition-all duration-300"></div>
+          <div class="space-y-1.5">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-[10px] font-bold border px-2 py-0.5 rounded-full ${color}">
+                ${label}
+              </span>
+              <span class="text-[10px] text-satoyama-600 font-medium">${dateStr}</span>
+            </div>
+            <p class="text-xs text-satoyama-800 bg-white border border-satoyama-600/10 rounded-xl p-3 leading-relaxed group-hover:bg-satoyama-50 group-hover:border-satoyama-600/20 transition-all shadow-sm">
+              ${log.description}
+            </p>
+          </div>
+        `;
+        container.appendChild(item);
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-8 text-satoyama-650 border border-dashed border-satoyama-600/15 rounded-2xl pl-0 -ml-4">
+            <i data-lucide="check-circle-2" class="w-6 h-6 text-satoyama-600 mx-auto mb-2"></i>
+            <p class="text-xs">条件に合う作業履歴はありません</p>
+          </div>
+        `;
+      }
+      lucide.createIcons();
+    }
+
+    function setTimelineFilter(filter) {
+      currentTimelineFilter = filter;
+      const filters = ['all', 'repair', 'replacement', 'inspection', 'other'];
+      filters.forEach(f => {
+        const btn = document.getElementById(`filter-btn-${f}`);
+        if (f === filter) {
+          btn.className = 'text-[9px] font-bold px-2 py-1 rounded-md border bg-satoyama-600/15 text-satoyama-700 border-satoyama-600/30';
+        } else {
+          btn.className = 'text-[9px] font-bold px-2 py-1 rounded-md border bg-white text-satoyama-600 border-satoyama-600/10 hover:bg-satoyama-50';
+        }
+      });
+      renderTimeline();
+    }
+
+    function applyBatteryReplacementDraft() {
+      document.getElementById('maint-type').value = 'battery_replacement';
+      document.getElementById('maint-desc').value = '【バッテリー低下アラート緊急対応】現場（篠山城下町）にて、あらかじめ急速充電しておいた予備バッテリーパック（100%フル充電）へ安全に交換作業を行いました。通信確認・動作点検共に異常ありません。';
+      
+      const formSection = document.getElementById('maintenance-form-section');
+      formSection.scrollIntoView({ behavior: 'smooth' });
+      formSection.classList.add('bg-satoyama-600/5', 'border-satoyama-600/30');
+      setTimeout(() => {
+        formSection.classList.remove('bg-satoyama-600/5', 'border-satoyama-600/30');
+      }, 1500);
+    }
+
+    function submitMaintenance(e) {
+      e.preventDefault();
+      
+      const type = document.getElementById('maint-type').value;
+      const desc = document.getElementById('maint-desc').value;
+
+      if (!desc.trim()) return;
+
+      const newLog = {
+        id: `m-${Date.now()}`,
+        type,
+        description: desc,
+        performed_at: new Date().toISOString()
+      };
+
+      if (!maintenanceLogs[selectedVehicleId]) {
+        maintenanceLogs[selectedVehicleId] = [];
+      }
+
+      maintenanceLogs[selectedVehicleId].unshift(newLog);
+
+      if (type === 'battery_replacement') {
+        const vehicle = vehicles.find(v => v.device_id === selectedVehicleId);
+        if (vehicle) {
+          vehicle.battery_soc = 100;
+          vehicle.battery_voltage = 42000;
+          if (vehicle.status === 'error') {
+            vehicle.status = 'available';
+          }
+          renderMarkers();
+          selectVehicle(selectedVehicleId);
+        }
+      }
+
+      document.getElementById('maint-desc').value = '';
+      renderTimeline();
+    }
+
+    function toggleMobileSidebar(open) {
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('sidebar-overlay');
+
+      if (open) {
+        sidebar.classList.remove('-translate-x-full');
+        overlay.classList.remove('hidden');
+      } else {
+        sidebar.classList.add('-translate-x-full');
+        overlay.classList.add('hidden');
+      }
+    }
+
+    document.getElementById('sidebar-overlay').addEventListener('click', () => {
+      toggleMobileSidebar(false);
+    });
+
+    window.onload = () => {
+      initMap();
+      renderVehicleList();
+      lucide.createIcons();
+    };
+  </script>
+</body>
+</html>

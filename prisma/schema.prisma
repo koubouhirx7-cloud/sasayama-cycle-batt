@@ -1,0 +1,74 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum VehicleStatus {
+  in_use
+  available
+  charging
+  error
+}
+
+// 車両の最新状態を管理する台帳（マスター）
+model Vehicle {
+  id              String        @id @default(uuid())
+  deviceId        String        @unique @map("device_id")
+  batterySoc      Int           @map("battery_soc")     // 0-100%
+  batteryVoltage  Int           @map("battery_voltage") // mV
+  currentLat      Float         @map("current_lat")
+  currentLng      Float         @map("current_lng")
+  status          VehicleStatus @default(available)
+  lastUpdated     DateTime      @default(now()) @map("last_updated")
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  telemetryLogs   TelemetryLog[]
+  maintenanceLogs MaintenanceLog[]
+
+  @@index([status])
+  @@index([batterySoc])
+  @@map("vehicles")
+}
+
+// すべてのデータログを追記する行動履歴（時系列ログ）
+model TelemetryLog {
+  id              String        @id @default(uuid())
+  deviceId        String        @map("device_id")
+  vehicle         Vehicle       @relation(fields: [deviceId], references: [deviceId], onDelete: Cascade)
+  batterySoc      Int           @map("battery_soc")
+  batteryVoltage  Int           @map("battery_voltage")
+  currentLat      Float         @map("current_lat")
+  currentLng      Float         @map("current_lng")
+  status          VehicleStatus
+  timestamp       DateTime
+
+  @@index([deviceId, timestamp(sort: Desc)])
+  @@map("telemetry_logs")
+}
+
+enum MaintenanceType {
+  puncture_repair       @map("puncture_repair")       // パンク修理
+  tire_replacement      @map("tire_replacement")      // タイヤ交換
+  battery_replacement   @map("battery_replacement")   // バッテリー交換
+  brake_adjustment      @map("brake_adjustment")      // ブレーキ調整
+  regular_inspection    @map("regular_inspection")    // 定期点検
+  other                 @map("other")                 // その他
+}
+
+// メンテナンス記録（日誌）のテーブル
+model MaintenanceLog {
+  id              String          @id @default(uuid())
+  deviceId        String          @map("device_id")
+  vehicle         Vehicle         @relation(fields: [deviceId], references: [deviceId], onDelete: Cascade)
+  type            MaintenanceType
+  description     String?         @db.Text                      // 詳しいメモ
+  performedAt     DateTime        @default(now()) @map("performed_at") // 作業実施日時
+
+  @@index([deviceId, performedAt(sort: Desc)])
+  @@map("maintenance_logs")
+}
+
