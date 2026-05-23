@@ -2,7 +2,16 @@
 
 import React, { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
-import MapView from '../components/MapView';
+import dynamic from 'next/dynamic';
+
+const MapView = dynamic(() => import('../components/MapView'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full bg-satoyama-50 flex items-center justify-center">
+      <div className="text-satoyama-600 font-bold animate-pulse">地図を読み込み中...</div>
+    </div>
+  )
+});
 import VehicleDetail from '../components/VehicleDetail';
 import { Menu } from 'lucide-react';
 
